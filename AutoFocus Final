@@ -1,0 +1,237 @@
+from scapy.all import sniff, TCP, IP, Raw
+import win32gui, win32con, win32process, win32api
+import psutil, logging, traceback, re, threading, ctypes
+
+# ─── Configuración ──────────────────────────────
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(message)s",
+    handlers=[
+        logging.FileHandler("dofus_monitor.log", encoding="utf-8")
+    ]
+)
+log = logging.getLogger(__name__)
+
+# ─── Servidores ─────────────────────────────────
+SERVERS = {
+    "Allisteria": "34.253.140.241",
+    "Fallaster":  "34.255.49.243",
+    "Fallaster2":  "54.228.180.96"
+}
+REMOTE_IPS  = set(SERVERS.values())
+REMOTE_PORT = 443
+
+_ip_filter = " or ".join(f"host {ip}" for ip in REMOTE_IPS)
+BPF_FILTER  = f"tcp and port {REMOTE_PORT} and ({_ip_filter})"
+
+WINDOW_KEYWORD = "Dofus Retro"
+
+# ─── Variables globales ─────────────────────────
+all_detected = {}
+id_to_port   = {}
+id_to_name   = {}
+
+stop_monitor   = threading.Event()
+monitor_thread = None
+
+# ─── Funciones de ventana ──────────────────────
+def get_dofus_windows() -> dict:
+    windows = {}
+    def enum_handler(hwnd, _):
+        if win32gui.IsWindowVisible(hwnd):
+            title = win32gui.GetWindowText(hwnd)
+            if WINDOW_KEYWORD in title:
+                windows[hwnd] = title
+    win32gui.EnumWindows(enum_handler, None)
+    return windows
+
+def get_pid_by_port(local_port: int) -> int | None:
+    try:
+        for conn in psutil.net_connections(kind="tcp"):
+            if conn.laddr.port == local_port and conn.pid:
+                return conn.pid
+    except psutil.AccessDenied:
+        print("  ⚠ Ejecutá la aplicación como administrador para todas las funciones.")
+    return None
+
+def get_hwnd_by_pid_tree(pid: int) -> int | None:
+    try:
+        proc   = psutil.Process(pid)
+        parent = proc.parent()
+        if not parent: return None
+        result = None
+        def enum_handler(hwnd, _):
+            nonlocal result
+            if result or not win32gui.IsWindowVisible(hwnd): return
+            _, found_pid = win32process.GetWindowThreadProcessId(hwnd)
+            if found_pid == parent.pid and WINDOW_KEYWORD in win32gui.GetWindowText(hwnd):
+                result = hwnd
+        win32gui.EnumWindows(enum_handler, None)
+        return result
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        return None
+
+def _set_foreground(hwnd: int) -> bool:
+    try:
+        if win32gui.IsIconic(hwnd):
+            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+        current_thread = ctypes.windll.kernel32.GetCurrentThreadId()
+        target_thread, _ = win32process.GetWindowThreadProcessId(hwnd)
+        attached = False
+        if current_thread != target_thread:
+            try:
+                win32process.AttachThreadInput(current_thread, target_thread, True)
+                attached = True
+            except Exception: pass
+        try:
+            win32gui.BringWindowToTop(hwnd)
+            win32gui.ShowWindow(hwnd, win32con.SW_SHOW)
+            win32gui.SetForegroundWindow(hwnd)
+        except Exception:
+            win32api.keybd_event(0, 0, 0, 0)
+            win32gui.SetForegroundWindow(hwnd)
+        finally:
+            if attached:
+                try: win32process.AttachThreadInput(current_thread, target_thread, False)
+                except Exception: pass
+        return True
+    except Exception:
+        log.error("No se pudo activar la ventana: %s", traceback.format_exc())
+        return False
+
+def activar_ventana_por_puerto(local_port: int) -> bool:
+    pid = get_pid_by_port(local_port)
+    if not pid:
+        windows = get_dofus_windows()
+        if len(windows) == 1:
+            return _set_foreground(list(windows.keys())[0])
+        return False
+    hwnd = get_hwnd_by_pid_tree(pid)
+    if not hwnd: return False
+    return _set_foreground(hwnd)
+
+# ─── Helpers de servidor ───────────────────────
+def get_server_name(ip: str) -> str:
+    for name, sip in SERVERS.items():
+        if sip == ip:
+            return name
+    return ip
+
+# ─── Registro de personajes ────────────────────
+def _registrar_personaje(char_id_str: str, local_port: int, nombre: str,
+                          server: str) -> None:
+    changed = False
+    if char_id_str not in all_detected:
+        all_detected[char_id_str] = {"name": nombre, "port": local_port, "server": server}
+        changed = True
+    else:
+        entry = all_detected[char_id_str]
+        if entry["name"] == "?":
+            entry["name"] = nombre;  changed = True
+        if entry["port"] != local_port:
+            entry["port"] = local_port; changed = True
+        if entry.get("server") != server:
+            entry["server"] = server;  changed = True
+    if changed:
+        id_to_port[char_id_str] = local_port
+        id_to_name[char_id_str] = nombre
+        print(f"  ✔ [{server}] {nombre} conectado")
+        log.info("Personaje registrado: %s | %s | puerto=%d", server, nombre, local_port)
+
+def detectar_personajes(data: bytes, local_port: int, server: str) -> None:
+    matches = re.findall(rb"ASK\|(\d+)\|([^|]+)\|(\d+)\|", data)
+    for char_id, nombre, _ in matches:
+        _registrar_personaje(
+            char_id.decode(),
+            local_port,
+            nombre.decode(errors="ignore"),
+            server
+        )
+
+# ─── Detección de turnos ───────────────────────
+def handle_turn_detection(data: bytes, local_port: int, server: str) -> None:
+    detectar_personajes(data, local_port, server)
+    matches = re.findall(rb"GTS(\d+)\|", data)
+    for char_id in matches:
+        char_id_str = char_id.decode()
+        if char_id_str not in id_to_port: continue
+        if local_port != id_to_port[char_id_str]: continue
+        nombre = id_to_name.get(char_id_str, char_id_str)
+        print(f"\n  ★ ¡Es el turno de {nombre}!")
+        activar_ventana_por_puerto(local_port)
+        log.info("Turno: %s | %s | puerto=%d", server, nombre, local_port)
+
+# ─── Procesamiento de mensajes ─────────────────
+def process_message(packet) -> None:
+    if stop_monitor.is_set(): return
+    if not (packet.haslayer(IP) and packet.haslayer(TCP)): return
+
+    ip_layer  = packet[IP]
+    tcp_layer = packet[TCP]
+    src_ip, dst_ip = ip_layer.src, ip_layer.dst
+    sport,  dport  = tcp_layer.sport, tcp_layer.dport
+
+    if src_ip not in REMOTE_IPS and dst_ip not in REMOTE_IPS: return
+    if sport != REMOTE_PORT and dport != REMOTE_PORT: return
+    if not packet.haslayer(Raw): return
+
+    data       = packet[Raw].load
+    remote_ip  = src_ip if src_ip in REMOTE_IPS else dst_ip
+    local_port = dport  if src_ip in REMOTE_IPS else sport
+    server     = get_server_name(remote_ip)
+
+    handle_turn_detection(data, local_port, server)
+
+# ─── Monitor ──────────────────────────────────
+def start_monitor() -> None:
+    try:
+        sniff(filter=BPF_FILTER,
+              prn=process_message, store=False,
+              stop_filter=lambda _: stop_monitor.is_set())
+    except Exception:
+        print("  ⚠ Error al iniciar el monitor. Verificá que estés ejecutando como administrador.")
+        log.error("Error en monitor: %s", traceback.format_exc())
+
+def launch_monitor() -> None:
+    global monitor_thread
+    stop_monitor.clear()
+    monitor_thread = threading.Thread(target=start_monitor, daemon=True)
+    monitor_thread.start()
+
+def stop_monitor_thread() -> None:
+    stop_monitor.set()
+    if monitor_thread:
+        monitor_thread.join(timeout=3)
+
+# ─── Menú principal ───────────────────────────
+def menu_principal() -> None:
+    print("\n" + "═"*50)
+    print("     DOFUS RETRO - DETECTOR DE TURNOS")
+    print("═"*50)
+    serv_list = " | ".join(SERVERS.keys())
+    print(f"\n  Servidores: Fallaster & Allisteria")
+    print("\n  Cómo usar:")
+    print("  1. El monitoreo se inicia automaticamente")
+    print("  2. Conecta tus personajes en el juego")
+    print("  3. El programa cambiará la ventana automáticamente en tu turno")
+    print("\n  → Escribe 'stop' para salir.\n")
+    launch_monitor()
+    print("  ✔ Monitor activo. Conecta tus personajes...\n")
+    while True:
+        cmd = input("").strip().lower()
+        if cmd == "stop":
+            break
+    stop_monitor_thread()
+    print("\nPersonajes detectados en esta sesión:")
+    if not all_detected:
+        print("  (ninguno)")
+    for cid, info in all_detected.items():
+        print(f"  [{info.get('server','?')}] {info['name']}  puerto={info['port']}")
+
+# ─── Main ─────────────────────────────────────
+if __name__ == "__main__":
+    try:
+        menu_principal()
+    except KeyboardInterrupt:
+        stop_monitor_thread()
+        print("\n  Monitor detenido.")
