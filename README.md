@@ -1,32 +1,36 @@
-# Autofocus Dofus Retro
+# ⚡ Autofocus Dofus Retro
 
 Detector simple y eficiente para cambiar automáticamente a la ventana del personaje activo en **Dofus Retro** (Compatible con Fallaster y Allisteria).
 
-## ⚠️ Disclaimer
-Este proyecto tiene fines exclusivamente educativos. El uso de herramientas de terceros puede ir en contra de los términos de servicio de Ankama. Úsalo bajo tu propio riesgo.
+> [!CAUTION]
+> **Disclaimer:** Este proyecto tiene fines exclusivamente educativos. El uso de herramientas de terceros puede ir en contra de los términos de servicio de Ankama. Úsalo bajo tu propio riesgo.
 
-## 🛠️ Requisitos previos
+---
 
-Para que el script funcione correctamente en Windows, necesitas:
+## 🚀 Descarga y Uso (Versión Ejecutable)
+Si no quieres instalar Python, puedes usar la versión lista para usar:
 
-1.  **Python 3.10+** instalado.
-2.  **Npcap**
-    * [Descargar Npcap aquí](https://npcap.com/#download).
-    * *Nota: Durante la instalación, asegúrate de marcar la opción "Install Npcap in WinPcap API-compatible Mode".*
-3.  **Permisos de Administrador**: Debes ejecutar la terminal (CMD o PowerShell) como Administrador para que el script tenga acceso a la tarjeta de red.
+1. Ve a la sección de [**Releases**](https://github.com/TU_USUARIO/TU_REPO/releases/latest).
+2. Descarga el archivo `DofusTools.zip`.
+3. Descomprime el contenido en una carpeta.
+4. **Importante:** Instala **Npcap** (ver sección de requisitos abajo).
+5. Ejecuta `DofusTools.exe` como **Administrador**.
 
-## Instalación
+---
 
-Clona este repositorio o descarga el archivo `.py` y ejecuta el siguiente comando para instalar las dependencias:
+## 🛠️ Requisitos Previos (Obligatorio)
 
-pip install scapy pywin32 psutil
+Para que la herramienta pueda detectar los paquetes de red, necesitas instalar:
 
-## Uso
+* **Npcap:** [Descargar aquí la versión oficial](https://npcap.com/#download).
+    * *Nota:* Durante la instalación, **debes** marcar la opción: `"Install Npcap in WinPcap API-compatible Mode"`.
 
-Ejecuta el script:
+---
 
-python autofocus_dofus_retro.py
+## 💻 Ejecución desde el Código Fuente (Para Desarrolladores)
 
-Luego conecta tus personajes en el juego, el script detectará cuándo es tu turno y pondrá la ventana en primer plano.
+Si prefieres ejecutar el script manualmente, asegúrate de tener **Python 3.10+** instalado.
 
-Para salir escribe stop y presiona Enter.
+1. **Instalar dependencias:**
+   ```bash
+   pip install scapy pywin32 psutil
