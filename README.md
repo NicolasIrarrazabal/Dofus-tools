@@ -1,36 +1,53 @@
-# ⚡ Autofocus Dofus Retro
+Autofocus – Dofus Retro
 
-Detector simple y eficiente para cambiar automáticamente a la ventana del personaje activo en **Dofus Retro** (Compatible con Fallaster y Allisteria).
+Autofocus es una herramienta que detecta automáticamente cuándo es tu turno en Dofus Retro y cambia el foco a la ventana correcta del personaje.
 
-> [!CAUTION]
-> **Disclaimer:** Este proyecto tiene fines exclusivamente educativos. El uso de herramientas de terceros puede ir en contra de los términos de servicio de Ankama. Úsalo bajo tu propio riesgo.
+Está pensada especialmente para jugadores en multicuenta, donde cambiar manualmente entre ventanas puede ser lento o incómodo.
 
----
+Aviso importante
 
-## 🚀 Descarga y Uso (Versión Ejecutable)
-Si no quieres instalar Python, puedes usar la versión lista para usar:
+No modifica el juego ni interactúa directamente con él. Solo analiza tráfico de red local para detectar eventos.
 
-1. Ve a la sección de [**Releases**](https://github.com/TU_USUARIO/TU_REPO/releases/latest).
-2. Descarga el archivo `DofusTools.zip`.
-3. Descomprime el contenido en una carpeta.
-4. **Importante:** Instala **Npcap** (ver sección de requisitos abajo).
-5. Ejecuta `DofusTools.exe` como **Administrador**.
+Aun así, el uso de herramientas externas puede ir en contra de los términos de servicio de Ankama.
+Úsalo bajo tu propia responsabilidad.
 
----
+Uso rápido (versión ejecutable)
 
-## 🛠️ Requisitos Previos (Obligatorio)
+Si solo quieres usar la herramienta sin instalar nada complicado:
 
-Para que la herramienta pueda detectar los paquetes de red, necesitas instalar:
+Ve a la sección de Releases
+Descarga DofusTools.zip
+Extrae los archivos
+Instala Npcap (ver abajo)
+Ejecuta DofusTools.exe como administrador
+🧩 Requisitos
 
-* **Npcap:** [Descargar aquí la versión oficial](https://npcap.com/#download).
-    * *Nota:* Durante la instalación, **debes** marcar la opción: `"Install Npcap in WinPcap API-compatible Mode"`.
+Para que el programa funcione correctamente necesitas instalar:
 
----
+Npcap
+Durante la instalación asegúrate de marcar la opción:
 
-## 💻 Ejecución desde el Código Fuente (Para Desarrolladores)
+Install Npcap in WinPcap API-compatible Mode
 
-Si prefieres ejecutar el script manualmente, asegúrate de tener **Python 3.10+** instalado.
+Esto es necesario para poder capturar paquetes de red.
 
-1. **Instalar dependencias:**
-   ```bash
-   pip install scapy pywin32 psutil
+💻 Uso desde código fuente
+
+Si prefieres ejecutarlo manualmente:
+
+Requisitos
+Python 3.10 o superior
+Instalación
+pip install scapy pywin32 psutil
+Ejecución
+python main.py
+🧠 ¿Cómo funciona?
+
+La herramienta escucha paquetes de red relacionados con el juego y detecta cuándo ocurre un evento específico (como el inicio de turno).
+
+En base a esa información, identifica qué ventana corresponde al personaje activo y la pone en primer plano automáticamente.
+
+📌 Notas
+Compatible con Dofus Retro (probado en servidores como Fallaster y Allisteria)
+No modifica archivos del juego
+No inyecta código ni automatiza acciones dentro del cliente
