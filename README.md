@@ -10,7 +10,7 @@ Detecta eventos del juego y automatiza tres acciones:
 
 | Feature | Descripción |
 |---|---|
-| **Auto-focus** | Al llegar tu turno en combate, enfoca automáticamente la ventana correcta con `Ctrl+Alt+1..0` |
+| **Auto-focus** | Al llegar tu turno en combate, enfoca automáticamente la ventana correcta. |
 | **Auto-group** | Al recibir una invitación de grupo, cambia el foco al personaje invitado |
 | **Auto-trade** | Al recibir una solicitud de intercambio, cambia a la ventana del personaje receptor |
 
