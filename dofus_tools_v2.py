@@ -7,6 +7,10 @@ import os
 from pathlib import Path
 import socket
 
+# ── Instancia única (IPC por socket local) ────────────────────────────────────
+_SINGLE_INSTANCE_PORT = 47652   # puerto local arbitrario solo para IPC interno
+_SHOW_SIGNAL          = b"SHOW"
+
 # ── System Tray ───────────────────────────────────────────────────────────────
 try:
     import pystray
@@ -59,6 +63,83 @@ stop_monitor            = threading.Event()
 feature_autofocus = True
 feature_autogroup = True
 feature_autotrade = True
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  Instancia única — evita abrir dos veces la app
+# ══════════════════════════════════════════════════════════════════════════════
+class SingleInstanceGuard:
+    """
+    Garantiza que solo exista una instancia del programa.
+
+    Flujo:
+    • Al arrancar llama a `acquire()`.
+      - Si devuelve False → ya hay otra instancia corriendo; le manda la señal
+        SHOW para que salga al frente, y el proceso actual debe terminar.
+      - Si devuelve True  → somos la primera instancia; arrancamos el servidor
+        IPC en background para escuchar señales futuras.
+    • Cuando otra instancia envía SHOW, llamamos a `app.tray.restore_window()`.
+    """
+
+    def __init__(self):
+        self._server_sock = None
+
+    # ── Intento de adquirir el "lock" ─────────────────────────────────────────
+    def acquire(self) -> bool:
+        """
+        True  → primera instancia (ok para arrancar).
+        False → ya existe otra instancia (el llamador debe salir).
+        """
+        # Intentar conectar a una instancia existente
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(0.5)
+            s.connect(("127.0.0.1", _SINGLE_INSTANCE_PORT))
+            s.sendall(_SHOW_SIGNAL)
+            s.close()
+            return False          # había otra instancia; le avisamos
+        except (ConnectionRefusedError, OSError):
+            pass                  # nadie escucha → somos los primeros
+
+        # Crear el servidor IPC que escuchará señales de instancias futuras
+        try:
+            self._server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self._server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self._server_sock.bind(("127.0.0.1", _SINGLE_INSTANCE_PORT))
+            self._server_sock.listen(5)
+            t = threading.Thread(target=self._listen, daemon=True)
+            t.start()
+            log.info("[SINGLE] Servidor IPC escuchando en puerto %d", _SINGLE_INSTANCE_PORT)
+            return True
+        except OSError as e:
+            log.warning("[SINGLE] No se pudo crear el servidor IPC: %s", e)
+            return True           # dejar pasar de todas formas
+
+    # ── Hilo servidor: espera señales SHOW ────────────────────────────────────
+    def _listen(self):
+        while True:
+            try:
+                conn, _ = self._server_sock.accept()
+                data = conn.recv(64)
+                conn.close()
+                if data.strip() == _SHOW_SIGNAL and app:
+                    log.info("[SINGLE] Señal SHOW recibida → restaurando ventana")
+                    app.after(0, app.tray.restore_window)
+            except Exception:
+                break   # socket cerrado al salir
+
+    # ── Liberar el puerto al cerrar ───────────────────────────────────────────
+    def release(self):
+        if self._server_sock:
+            try:
+                self._server_sock.close()
+            except Exception:
+                pass
+            self._server_sock = None
+
+
+# Instancia global del guard
+_instance_guard = SingleInstanceGuard()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1534,11 +1615,19 @@ def monitor_desconexiones():
 # ══════════════════════════════════════════════════════════════════════════════
 def main():
     global app
+
+    # ── Instancia única ───────────────────────────────────────────────────────
+    if not _instance_guard.acquire():
+        # Ya hay una instancia corriendo; le enviamos SHOW y salimos silenciosamente
+        print("[SINGLE] Ya hay una instancia corriendo → traída al frente.")
+        return
+
     app = DofusToolsApp()
     threading.Thread(target=start_monitor,        daemon=True).start()
     threading.Thread(target=monitor_desconexiones, daemon=True).start()
     app.mainloop()
     stop_monitor.set()
+    _instance_guard.release()
 
 
 if __name__ == "__main__":
