@@ -5,7 +5,7 @@ from tkinter import font as tkfont, messagebox, simpledialog
 import json
 import os
 from pathlib import Path
-import socket  # <-- AÑADE ESTA LÍNEA
+import socket 
 
 # ── win32 opcional (Windows) ──────────────────────────────────────────────────
 try:
